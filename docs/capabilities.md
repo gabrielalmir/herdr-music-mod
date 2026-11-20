@@ -1,1 +1,3 @@
-Spotify apresenta faixa e artista, lista dispositivos e oferece transporte, volume, ajuste de posição, aleatório e repetição conforme as capacidades do dispositivo ativo.
+The panel displays the track and artist, lists Spotify devices, and offers
+playback controls, volume, seeking, shuffle, and repeat according to the active
+device's capabilities.

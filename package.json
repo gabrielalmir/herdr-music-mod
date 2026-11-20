@@ -1,5 +1,20 @@
 {
   "name": "herdr-music",
+  "description": "A Spotify Connect mini-player for Herdr on Windows.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gabrielalmir/herdr-music-mod.git"
+  },
+  "homepage": "https://github.com/gabrielalmir/herdr-music-mod#readme",
+  "bugs": {
+    "url": "https://github.com/gabrielalmir/herdr-music-mod/issues"
+  },
+  "keywords": [
+    "herdr",
+    "spotify",
+    "spotify-connect",
+    "windows"
+  ],
   "private": true,
   "type": "module",
   "scripts": {

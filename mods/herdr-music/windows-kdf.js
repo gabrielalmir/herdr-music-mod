@@ -69,18 +69,18 @@ export async function deriveOnWindows(password, salt, cx) {
       }
     }
     if (!socket) {
-      throw Error("O serviço de criptografia do Windows não iniciou.");
+      throw Error("The Windows cryptography service did not start.");
     }
     let pending = "";
     const line = async () => {
       while (!pending.includes("\n")) {
         const bytes = await socket.read(READ_CHUNK_BYTES);
         if (!bytes || !bytes.length) {
-          throw Error("O serviço de criptografia do Windows se desconectou.");
+          throw Error("The Windows cryptography service disconnected.");
         }
         pending += String.fromCharCode(...bytes);
         if (pending.length > MAX_RESPONSE_BYTES) {
-          throw Error("Resposta inválida da criptografia do Windows.");
+          throw Error("Invalid response from the Windows cryptography service.");
         }
       }
       const end = pending.indexOf("\n");
@@ -95,7 +95,7 @@ export async function deriveOnWindows(password, salt, cx) {
         .digest("hex");
     if ((await line()) !== proof("server")) {
       throw Error(
-        "O serviço de criptografia do Windows não pôde ser autenticado.",
+        "Could not authenticate the Windows cryptography service.",
       );
     }
     await socket.write(
@@ -103,7 +103,7 @@ export async function deriveOnWindows(password, salt, cx) {
     );
     const key = await line();
     if (!/^[a-f0-9]{64}$/.test(key) || (await worker) !== 0) {
-      throw Error("Falha na derivação da chave no Windows.");
+      throw Error("Windows key derivation failed.");
     }
     return Uint8Array.from(key.match(/../g), (byte) => parseInt(byte, 16));
   } finally {

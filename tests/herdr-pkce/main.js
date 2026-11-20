@@ -9,8 +9,8 @@ export default class PkceCheck extends View {
         !/^[A-Za-z0-9_-]{64}$/.test(attempt.verifier) ||
         !/^[A-Za-z0-9_-]{32}$/.test(attempt.state) ||
         !attempt.url.includes("code_challenge=" + challenge(attempt.verifier) + "&code_challenge_method=S256")) {
-      throw Error("PKCE inválido no runtime do Herdr.");
+      throw Error("Invalid PKCE in the Herdr runtime.");
     }
-    return div().child("PKCE S256 validado");
+    return div().child("PKCE S256 verified");
   }
 }

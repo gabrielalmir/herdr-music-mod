@@ -1,1 +1,4 @@
-main.js renderiza o dock e o painel. O dock atualiza a reprodução a cada 15 segundos quando conectado. spotify.js encapsula OAuth, cofre e chamadas HTTPS via fetch. As cópias do mod usam o mesmo controlador em memória. Preferência de provedor e metadados de reprodução usam o estado compartilhado do Herdr.
+`main.js` renders the music panel and refreshes playback every 15 seconds while
+connected. `spotify.js` handles OAuth, vault encryption, and HTTPS requests
+through `fetch`. Copies of the mod share one in-memory Spotify session.
+`windows-kdf.js` coordinates native password-based key derivation on Windows.

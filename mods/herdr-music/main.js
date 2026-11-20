@@ -75,7 +75,7 @@ const icon = (name) => "mods/herdr-music/icons/" + name + ".svg";
 const shellIcon = (name) => "mods/workspace-chrome/" + name + ".svg";
 /** @param {unknown} error */
 const errorMessage = (error) =>
-  (error instanceof Error && error.message) || "Falha na operação.";
+  (error instanceof Error && error.message) || "The operation failed.";
 /** @param {number} ms */
 const timeLabel = (ms) => {
   const seconds = Math.floor(Math.max(0, ms) / 1000);
@@ -144,11 +144,11 @@ export default class Music extends View {
     this.track = null;
     /** @type {Device[] | undefined} */
     this.devices = undefined;
-    this.client = InputState.new({ placeholder: "Client ID do Spotify" });
+    this.client = InputState.new({ placeholder: "Spotify Client ID" });
     this.client.set_masked(true);
-    this.password = InputState.new({ placeholder: "Senha local do cofre" });
+    this.password = InputState.new({ placeholder: "Local vault password" });
     this.password.set_masked(true);
-    this.url = InputState.new({ placeholder: "Cole a URL final aqui" });
+    this.url = InputState.new({ placeholder: "Paste the final URL here" });
     this.url.set_masked(true);
     this.url.on("submit", (_, cx) => this.finishConnection(cx));
     this.seek = SliderState.new({ max: SEEK_SCALE });
@@ -206,7 +206,7 @@ export default class Music extends View {
             new Promise((_, reject) => {
               timeout = cx.timer.after(OPERATION_TIMEOUT_MS, () => {
                 const error = new Error(
-                  "O serviço demorou para responder. Tente novamente.",
+                  "The service timed out. Try again.",
                 );
                 error.name = "TimeoutError";
                 reject(error);
@@ -254,13 +254,13 @@ export default class Music extends View {
     let code;
     try {
       if (cryptoOK && this.manualPassword && !password?.trim()) {
-        throw Error("Preencha a senha local do cofre para concluir.");
+        throw Error("Enter your local vault password to finish.");
       }
       if (cryptoOK && !this.manualPassword && !this.copiedCode) {
-        throw Error("Copie e guarde o código de desbloqueio para concluir.");
+        throw Error("Copy and save the unlock code to finish.");
       }
       if (!input.trim()) {
-        throw Error("Cole o endereço completo de retorno do Spotify.");
+        throw Error("Paste the full Spotify callback URL.");
       }
       code = callback(attempt, input);
     } catch (error) {
@@ -288,7 +288,7 @@ export default class Music extends View {
         generated,
       );
       this.settings = false;
-      runtime.stage("Consultando o player…");
+      runtime.stage("Checking playback…");
       await this.refresh(runtime);
     });
   }
@@ -383,7 +383,7 @@ export default class Music extends View {
   startAuthorization(cx) {
     try {
       if (!service) {
-        throw Error("Aguarde a inicialização.");
+        throw Error("Wait for the mod to finish initializing.");
       }
       if (running) {
         return;
@@ -409,7 +409,7 @@ export default class Music extends View {
       const vault = JSON.parse(saved);
       const password = this.password.value();
       this.password.set_value("");
-      runtime.stage("Desbloqueando a conta…");
+      runtime.stage("Unlocking your account…");
       const token = await unseal(
         password,
         vault,
@@ -448,7 +448,7 @@ export default class Music extends View {
   savePassword(cx) {
     const password = this.password.value();
     if (!password.trim()) {
-      this.message = "Informe uma nova senha.";
+      this.message = "Enter a new password.";
       cx.notify();
       return;
     }
@@ -456,7 +456,7 @@ export default class Music extends View {
       this.password.set_value("");
       await service.changePassword(password, runtime);
       this.changingPassword = false;
-      this.message = "Cofre atualizado.";
+      this.message = "Vault updated.";
     });
   }
 
@@ -492,7 +492,7 @@ export default class Music extends View {
   copyVaultCode(cx) {
     cx.write_to_clipboard(this.generatedCode);
     this.copiedCode = true;
-    this.message = "Código copiado.";
+    this.message = "Code copied.";
     cx.notify();
   }
 
@@ -537,11 +537,11 @@ export default class Music extends View {
       h_flex()
         .items_center()
         .gap(6)
-        .child(div().flex_1().child("Música"))
+        .child(div().flex_1().child("Music"))
         .child(
           this.button(
             t,
-            this.settings ? "Voltar" : "Configurar",
+            this.settings ? "Back" : "Settings",
             (cx) => this.toggleSettings(cx),
             shellIcon(this.settings ? "chevron-left" : "settings"),
           ),
@@ -549,7 +549,7 @@ export default class Music extends View {
         .child(
           this.button(
             t,
-            "Fechar",
+            "Close",
             () => run("layout.hide", { id: "panel" }),
             shellIcon("x"),
             true,
@@ -569,7 +569,7 @@ export default class Music extends View {
   renderConnection(root, t) {
     if (!this.settings) {
       root.child(
-        this.button(t, saved ? "Desbloquear" : "Conectar Spotify", (cx) =>
+        this.button(t, saved ? "Unlock" : "Connect Spotify", (cx) =>
           this.toggleSettings(cx),
         ),
       );
@@ -577,9 +577,9 @@ export default class Music extends View {
     }
     if (saved) {
       root
-        .child(div().child("Desbloqueie sua conta salva."))
+        .child(div().child("Unlock your saved account."))
         .child(Input.new(this.password))
-        .child(this.button(t, "Desbloquear", (cx) => this.unlock(cx)));
+        .child(this.button(t, "Unlock", (cx) => this.unlock(cx)));
       return;
     }
     root
@@ -587,23 +587,23 @@ export default class Music extends View {
       .child(
         this.button(
           t,
-          this.revealClient ? "Ocultar Client ID" : "Mostrar Client ID",
+          this.revealClient ? "Hide Client ID" : "Show Client ID",
           (cx) => this.toggleClientVisibility(cx),
           icon(this.revealClient ? "eye-off" : "eye"),
         ),
       )
       .child(
-        div().child("Cadastre este retorno no Spotify Dashboard: " + redirect),
+        div().child("Register this redirect URI in the Spotify Dashboard: " + redirect),
       );
     if (cryptoOK === false) {
       root.child(
         div().child(
-          "Cofre indisponível neste Herdr. A conexão dura esta sessão.",
+          "The vault is unavailable in this Herdr installation. Your connection lasts for this session.",
         ),
       );
     }
     root.child(
-      this.button(t, "Autorizar no Spotify", (cx) =>
+      this.button(t, "Authorize in Spotify", (cx) =>
         this.startAuthorization(cx),
       ),
     );
@@ -617,7 +617,7 @@ export default class Music extends View {
     root
       .child(
         div().child(
-          "Cole o endereço completo do navegador após autorizar, mesmo se a página não abrir.",
+          "After authorizing, paste the full URL from your browser, even if the page fails to load.",
         ),
       )
       .child(Input.new(this.url));
@@ -625,9 +625,9 @@ export default class Music extends View {
       if (this.manualPassword) {
         root
           .child(Input.new(this.password))
-          .child(div().child("O Windows protege a conta com a senha digitada."))
+          .child(div().child("Windows uses this password to protect your account."))
           .child(
-            this.button(t, "Usar código rápido", (cx) =>
+            this.button(t, "Use an unlock code", (cx) =>
               this.setManualPassword(cx, false),
             ),
           );
@@ -635,49 +635,49 @@ export default class Music extends View {
         root
           .child(
             div().child(
-              "Guarde o código para desbloquear sua conta ao reabrir o Herdr.",
+              "Save this code to unlock your account the next time you open Herdr.",
             ),
           )
           .child(
             this.button(
               t,
               this.copiedCode
-                ? "Copiar código novamente"
-                : "Copiar código de desbloqueio",
+                ? "Copy code again"
+                : "Copy unlock code",
               (cx) => this.copyVaultCode(cx),
               icon("copy"),
             ),
           )
           .child(
-            this.button(t, "Usar minha senha", (cx) =>
+            this.button(t, "Use my own password", (cx) =>
               this.setManualPassword(cx, true),
             ),
           );
       }
     }
     root.child(
-      this.button(t, "Concluir conexão", (cx) => this.finishConnection(cx)),
+      this.button(t, "Finish connecting", (cx) => this.finishConnection(cx)),
     );
   }
 
   /** @param {Panel} root @param {Theme} t @param {Playback | null} p */
   renderPlayback(root, t, p) {
-    root.child(div().child(p?.title || "Nenhuma faixa em reprodução"));
+    root.child(div().child(p?.title || "Nothing is playing"));
     if (p?.artist) {
       root.child(div().text_color(t.muted).child(p.artist));
     }
     if (!p) {
       root
         .child(
-          div().child("Inicie uma faixa no Spotify para controlá-la aqui."),
+          div().child("Start playing something in Spotify to control it here."),
         )
         .child(
-          this.button(t, "Abrir Spotify", (cx) =>
+          this.button(t, "Open Spotify", (cx) =>
             cx.open_url("https://open.spotify.com/"),
           ),
         )
         .child(
-          this.button(t, "Atualizar", (cx) =>
+          this.button(t, "Refresh", (cx) =>
             this.task(cx, (runtime) => this.refresh(runtime)),
           ),
         );
@@ -700,11 +700,11 @@ export default class Music extends View {
     }
     if (p && p.volume == null) {
       root.child(
-        div().text_color(t.muted).child("Volume disponível no dispositivo."),
+        div().text_color(t.muted).child("Adjust the volume on your device."),
       );
     }
     if (p?.restricted) {
-      root.child(div().child("Este dispositivo restringe o controle remoto."));
+      root.child(div().child("This device restricts remote control."));
     }
   }
 
@@ -723,28 +723,28 @@ export default class Music extends View {
       );
     if (p && !p.restricted) {
       if (!p.disallows.skipping_prev) {
-        action("Anterior", "/previous", "POST", "previous");
+        action("Previous", "/previous", "POST", "previous");
       }
       if (!p.disallows[p.playing ? "pausing" : "resuming"]) {
         action(
-          p.playing ? "Pausar" : "Reproduzir",
+          p.playing ? "Pause" : "Play",
           p.playing ? "/pause" : "/play",
           "PUT",
           p.playing ? "pause" : "play",
         );
       }
       if (!p.disallows.skipping_next) {
-        action("Próxima", "/next", "POST", "next");
+        action("Next", "/next", "POST", "next");
       }
       if (!p.disallows.toggling_shuffle) {
-        action("Aleatório", "/shuffle?state=" + !p.shuffle, "PUT");
+        action("Shuffle", "/shuffle?state=" + !p.shuffle, "PUT");
       }
       if (
         !p.disallows.toggling_repeat_context &&
         !p.disallows.toggling_repeat_track
       ) {
         action(
-          "Repetir",
+          "Repeat",
           "/repeat?state=" +
             { off: "context", context: "track", track: "off" }[p.repeat],
           "PUT",
@@ -756,15 +756,15 @@ export default class Music extends View {
 
   /** @param {Panel} root @param {Theme} t */
   renderDevices(root, t) {
-    root.child(this.button(t, "Dispositivos", (cx) => this.loadDevices(cx)));
+    root.child(this.button(t, "Devices", (cx) => this.loadDevices(cx)));
     if (this.devices?.length === 0) {
-      root.child(div().child("Nenhum dispositivo disponível."));
+      root.child(div().child("No devices available."));
     }
     for (const device of this.devices || []) {
       root.child(
         device.is_active || device.is_restricted || !device.id
-          ? div().child(device.name + (device.is_active ? " · ativo" : ""))
-          : this.button(t, "Ouvir em " + device.name, (cx) =>
+          ? div().child(device.name + (device.is_active ? " · active" : ""))
+          : this.button(t, "Play on " + device.name, (cx) =>
             this.transferPlayback(cx, device.id),
           ),
       );
@@ -775,19 +775,19 @@ export default class Music extends View {
   renderPasswordChange(root, t) {
     if (this.changingPassword) {
       root
-        .child(div().child("Digite a nova senha local do cofre."))
+        .child(div().child("Enter the new password for your local vault."))
         .child(Input.new(this.password))
         .child(
-          this.button(t, "Salvar nova senha", (cx) => this.savePassword(cx)),
+          this.button(t, "Save new password", (cx) => this.savePassword(cx)),
         )
         .child(
-          this.button(t, "Cancelar", (cx) =>
+          this.button(t, "Cancel", (cx) =>
             this.setChangingPassword(cx, false),
           ),
         );
     } else {
       root.child(
-        this.button(t, "Trocar senha do cofre", (cx) =>
+        this.button(t, "Change vault password", (cx) =>
           this.setChangingPassword(cx, true),
         ),
       );
@@ -821,7 +821,7 @@ export default class Music extends View {
       }
     }
     if (this.settings && (connected || saved)) {
-      root.child(this.button(t, "Desconectar", (cx) => this.disconnect(cx)));
+      root.child(this.button(t, "Disconnect", (cx) => this.disconnect(cx)));
     }
     return root.child(this.playbackControls(t, p));
   }

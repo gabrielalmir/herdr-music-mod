@@ -92,19 +92,19 @@ export function challenge(verifier) {
   /** @param {Iterable<number>} bytes */
   const hex = createHash("sha256").update(verifier).digest("hex");
   if (typeof hex !== "string" || !/^[a-f0-9]{64}$/.test(hex)) {
-    throw Error("Falha ao gerar o desafio PKCE.");
+    throw Error("Could not generate the PKCE challenge.");
   }
   return url64(hex.match(/../g).map((pair) => parseInt(pair, 16)));
 }
 /** @param {string} client @returns {OAuthAttempt} */
 export function authorize(client) {
   if (!/^[a-f\d]{32}$/i.test(client)) {
-    throw Error("Confira o Client ID do Spotify.");
+    throw Error("Check your Spotify Client ID.");
   }
   const verifier = url64(randomBytes(PKCE_VERIFIER_BYTES));
   const state = url64(randomBytes(OAUTH_STATE_BYTES));
   if (verifier.length !== 64 || state.length !== 32) {
-    throw Error("Falha ao iniciar autorização segura.");
+    throw Error("Could not start secure authorization.");
   }
   return {
     client,
@@ -128,21 +128,21 @@ export function authorize(client) {
 /** @param {OAuthAttempt | null} attempt @param {string} input @returns {string} */
 export function callback(attempt, input) {
   if (!attempt || attempt.used || Date.now() >= attempt.expires) {
-    throw Error("Inicie uma nova autorização.");
+    throw Error("Start a new authorization.");
   }
   const raw = input.trim();
   if (!raw.startsWith(redirect + "?") || raw.includes("#")) {
-    throw Error("Endereço de retorno inválido.");
+    throw Error("Invalid callback URL.");
   }
   const params = new Map();
   for (const field of raw.slice(redirect.length + 1).split("&")) {
     const split = field.indexOf("=");
     if (split < 1) {
-      throw Error("Retorno inválido.");
+      throw Error("Invalid callback.");
     }
     const key = decodeURIComponent(field.slice(0, split));
     if (params.has(key)) {
-      throw Error("Parâmetro duplicado.");
+      throw Error("Duplicate parameter.");
     }
     params.set(key, decodeURIComponent(field.slice(split + 1)));
   }
@@ -151,7 +151,7 @@ export function callback(attempt, input) {
     !params.get("code") ||
     params.has("error")
   ) {
-    throw Error("Autorização recusada ou retorno inválido.");
+    throw Error("Authorization denied or invalid callback.");
   }
   // Consume a validated callback before the token exchange, even if the exchange fails.
   attempt.used = true;
@@ -163,7 +163,7 @@ const hex = (bytes) =>
 /** @param {string} value */
 function fromHex(value) {
   if (typeof value !== "string" || !/^(?:[a-f0-9]{2})+$/.test(value)) {
-    throw Error("Cofre inválido.");
+    throw Error("Invalid vault.");
   }
   return Uint8Array.from(value.match(/../g), (b) => parseInt(b, 16));
 }
@@ -237,7 +237,7 @@ export async function unseal(
       key.fill(0);
     }
   } catch {
-    throw Error("Senha incorreta ou cofre danificado.");
+    throw Error("Incorrect password or damaged vault.");
   }
 }
 /** @param {string} value */
@@ -250,7 +250,7 @@ function legacyBytes(value) {
   for (const char of value.replace(/=+$/, "")) {
     const digit = alphabet.indexOf(char);
     if (digit < 0) {
-      throw Error("Cofre inválido.");
+      throw Error("Invalid vault.");
     }
     pending = (pending << 6) | digit;
     bits += 6;
@@ -297,7 +297,7 @@ export class Session {
   /** @param {string} client @param {GrantFields} fields @param {string | null} password @param {OperationRuntime} [runtime] @param {boolean} [generated] */
   async grant(client, fields, password, runtime, generated = false) {
     const wait = runtime?.wait || withoutTimeout;
-    runtime?.stage("Trocando o código com o Spotify…");
+    runtime?.stage("Exchanging the code with Spotify…");
     let r;
     try {
       r = await wait(() =>
@@ -312,26 +312,26 @@ export class Session {
         throw error;
       }
       throw Error(
-        "Herdr não conseguiu enviar a solicitação ao Spotify. Tente autorizar novamente.",
+        "Herdr could not send the request to Spotify. Try authorizing again.",
         { cause: error },
       );
     }
     if (!r.ok) {
       throw Error(
         r.status === 400
-          ? "Autorização expirada. Reconecte o Spotify."
-          : "Falha na autorização (" + r.status + ").",
+          ? "Authorization expired. Reconnect Spotify."
+          : "Authorization failed (" + r.status + ").",
       );
     }
     const data = /** @type {TokenResponse} */ (await wait(() => r.json()));
     if (!data.access_token) {
-      throw Error("Resposta de autorização inválida.");
+      throw Error("Invalid authorization response.");
     }
     const refresh =
       data.refresh_token ||
       ("refresh_token" in fields ? fields.refresh_token : null);
     if (password && refresh && (data.refresh_token || !this.refreshToken)) {
-      runtime?.stage("Protegendo a conta…");
+      runtime?.stage("Securing your account…");
       let vault;
       try {
         vault = await seal(
@@ -342,17 +342,17 @@ export class Session {
         );
       } catch {
         throw Error(
-          "O Herdr não conseguiu proteger a conta. Use o código de desbloqueio para salvar rapidamente.",
+          "Herdr could not secure your account. Use an unlock code to save it quickly.",
         );
       }
-      runtime?.stage("Gravando o cofre no Herdr…");
+      runtime?.stage("Saving the vault…");
       try {
         await wait(() =>
           this.storage(JSON.stringify({ client, ...vault, generated })),
         );
       } catch {
         throw Error(
-          "Spotify aceitou a autorização, mas o Herdr não conseguiu gravar o arquivo do cofre.",
+          "Spotify accepted the authorization, but Herdr could not write the vault file.",
         );
       }
     }
@@ -377,7 +377,7 @@ export class Session {
   async api(path = "", method = "GET", payload, runtime) {
     const wait = runtime?.wait || withoutTimeout;
     if (Date.now() < this.until) {
-      throw Error("Aguarde o limite de requisições.");
+      throw Error("Wait for the rate limit to reset.");
     }
     if (Date.now() + TOKEN_RENEWAL_MARGIN_MS >= this.expires) {
       await this.renew(runtime);
@@ -404,15 +404,15 @@ export class Session {
             1,
             Number(r.headers?.get?.("Retry-After")) || DEFAULT_RETRY_SECONDS,
           );
-      throw Error("Limite de requisições. Aguarde.");
+      throw Error("Rate limit reached. Try again later.");
     }
     if (!r.ok) {
       throw Error(
         r.status === 403
-          ? "Sem permissão para este controle."
+          ? "This control is not permitted."
           : r.status === 404
-            ? "Inicie a reprodução em um dispositivo Spotify."
-            : "Erro do Spotify (" + r.status + ").",
+            ? "Start playback on a Spotify device."
+            : "Spotify error (" + r.status + ").",
       );
     }
     return r.status === 204 || method !== "GET" ? null : wait(() => r.json());
@@ -435,9 +435,9 @@ export class Session {
   /** @param {string} password @param {OperationRuntime} runtime */
   async changePassword(password, runtime) {
     if (!this.refreshToken) {
-      throw Error("Desbloqueie ou conecte sua conta primeiro.");
+      throw Error("Unlock or connect your account first.");
     }
-    runtime.stage("Protegendo a conta com a nova senha…");
+    runtime.stage("Securing your account with the new password…");
     const vault = await seal(
       password,
       this.refreshToken,

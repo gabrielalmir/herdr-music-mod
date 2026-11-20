@@ -73,7 +73,7 @@ await session.grant(
 );
 await session.api();
 assert.equal(await unseal("password", JSON.parse(persisted)), "r2");
-for (const pattern of [/permissão/, /dispositivo/, /Limite/, /Aguarde/]) {
+for (const pattern of [/not permitted/, /Spotify device/, /Rate limit reached/, /Wait for the rate limit/]) {
   await assert.rejects(session.api(), pattern);
 }
 await session.logout();
