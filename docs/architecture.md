@@ -1,0 +1,1 @@
+main.js renderiza o dock e o painel. O dock atualiza a reprodução a cada 15 segundos quando conectado. spotify.js encapsula OAuth, cofre e chamadas HTTPS via fetch. As cópias do mod usam o mesmo controlador em memória. Preferência de provedor e metadados de reprodução usam o estado compartilhado do Herdr.

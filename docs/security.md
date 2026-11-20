@@ -1,0 +1,5 @@
+O retorno manual usa PKCE S256, state aleatório e uma tentativa de uso único com validade de dez minutos. O token de acesso fica em memória. O mod testa PBKDF2-SHA256 e AES-GCM antes de oferecer persistência. Cada gravação usa 600.000 iterações, salt de 16 bytes e IV de 12 bytes novos. Sem suporte criptográfico, a conexão dura a sessão. Desconectar apaga o conteúdo do cofre local. A revogação da autorização é feita na conta Spotify.
+
+O cofre v2 usa AES-GCM de @noble/ciphers 1.3.0 e PBKDF2-SHA256. Para senhas digitadas, o mod usa a implementação do Windows .NET em um processo PowerShell curto. A senha e a chave passam por uma conexão loopback de uso único com autenticação da sessão e não entram nos argumentos do processo nem em arquivos de trabalho. A licença acompanha o pacote. Desbloquear recupera o refresh token para renovar a sessão.
+
+A opção de código de desbloqueio gera 192 bits aleatórios no Herdr e usa uma única iteração de PBKDF2. Senhas digitadas usam 600.000 iterações. Guarde o código gerado para desbloquear a conta em outra sessão.

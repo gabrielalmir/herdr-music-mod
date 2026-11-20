@@ -1,0 +1,4 @@
+*.zip
+gpui-kit.d.ts
+herdr.d.ts
+node_modules/
