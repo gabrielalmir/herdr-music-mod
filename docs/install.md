@@ -1,5 +1,17 @@
-Back up the active mod folder outside `mods`. Extract the `herdr-music` folder
-from the ZIP into `HERDR_APP_HOME/mods`, replacing the entire mod installation.
+Extract the Windows ZIP and run `.\Install-Music.ps1` in PowerShell from the
+extracted folder. The installer works offline and preserves your Spotify
+authorization. It uses `HERDR_APP_HOME`, then `XDG_CONFIG_HOME/herdr-app`,
+then `~/.config/herdr-app`.
+
+The installer adds **Music** to `avlye-layout`. If ClickUp is installed,
+**Tasks** appears alongside **Music**. Both buttons open their panels on
+the right. A running Herdr window on `main` switches automatically. From
+another layout, run `herdr-app do layout.switch --name avlye-layout`. You can
+also select the layout after opening Herdr.
+
+To update, rerun the installer from the new package. It chooses the newest
+shared layout available locally, backs up a managed layout before replacing
+it, and leaves an edited layout in place with instructions for manual use.
 
 In the Spotify Dashboard, register `http://127.0.0.1:8765/callback` as the exact
 redirect URI. Select **Connect Spotify**, enter your Client ID, and authorize

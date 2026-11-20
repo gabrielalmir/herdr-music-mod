@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "crypto";
-import { gcm, pbkdf2, sha256 } from "./vault-crypto.js";
+import { seal, unseal, url64, VaultState, vaultIterations } from "./vendor/herdr-vault/vault.js";
 
 /**
  * @typedef {object} OAuthAttempt
@@ -10,17 +10,9 @@ import { gcm, pbkdf2, sha256 } from "./vault-crypto.js";
  * @property {string} url
  * @property {boolean} [used]
  */
-/**
- * @typedef {object} VaultContents
- * @property {number} [version]
- * @property {string} salt
- * @property {string} iv
- * @property {string} data
- */
-/** @typedef {VaultContents & { client: string, generated?: boolean }} PersistedVault */
-/** @typedef {(password: Uint8Array, salt: Uint8Array) => Promise<Uint8Array>} DeriveKey */
+/** @typedef {import("./vendor/herdr-vault/vault.js").VaultRecord & { client: string, generated?: boolean }} PersistedVault */
 /** @typedef {<T>(operation: () => Promise<T>) => Promise<T>} Wait */
-/** @typedef {{derive: DeriveKey, stage: (message: string) => void, wait: Wait}} OperationRuntime */
+/** @typedef {import("./vendor/herdr-vault/vault.js").Derivation & {stage: (message: string) => void, wait: Wait, commit: () => void}} OperationRuntime */
 /** @typedef {{access_token: string, refresh_token?: string, expires_in: number}} TokenResponse */
 /** @typedef {{id: string | null, name: string, is_active: boolean, is_restricted: boolean, supports_volume?: boolean, volume_percent: number | null}} Device */
 /** @typedef {Partial<Record<"seeking" | "skipping_prev" | "skipping_next" | "pausing" | "resuming" | "toggling_shuffle" | "toggling_repeat_context" | "toggling_repeat_track", boolean>>} PlaybackRestrictions */
@@ -37,16 +29,9 @@ import { gcm, pbkdf2, sha256 } from "./vault-crypto.js";
 /** @typedef {ShellFetchResponse & {headers?: {get(name: string): string | null}}} SpotifyResponse */
 /** @typedef {{grant_type: "authorization_code", code: string, redirect_uri?: string, code_verifier?: string} | {grant_type: "refresh_token", refresh_token: string}} GrantFields */
 
-const VAULT_CODE_BYTES = 24;
 const PKCE_VERIFIER_BYTES = 48;
 const OAUTH_STATE_BYTES = 24;
 const OAUTH_ATTEMPT_TTL_MS = 600000;
-const PASSWORD_ITERATIONS = 600000;
-const GENERATED_CODE_ITERATIONS = 1;
-const SALT_BYTES = 16;
-const IV_BYTES = 12;
-const KEY_BYTES = 32;
-const VAULT_VERSION = 2;
 const TOKEN_RENEWAL_MARGIN_MS = 30000;
 const DEFAULT_RETRY_SECONDS = 60;
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -57,31 +42,6 @@ const withoutTimeout = (operation) => operation();
 
 export const redirect = "http://127.0.0.1:8765/callback";
 
-// Herdr exposes indexed bytes, but its Buffer base64 conversion can return "".
-/** @param {Iterable<number>} bytes */
-function url64(bytes) {
-  const alphabet =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-  let result = "";
-  let bits = 0;
-  let pending = 0;
-  for (const byte of bytes) {
-    pending = (pending << 8) | byte;
-    bits += 8;
-    while (bits >= 6) {
-      bits -= 6;
-      result += alphabet[(pending >>> bits) & 63];
-    }
-  }
-  if (bits) {
-    result += alphabet[(pending << (6 - bits)) & 63];
-  }
-  return result;
-}
-export const generateVaultCode = () => url64(randomBytes(VAULT_CODE_BYTES));
-/** @param {boolean} [generated] */
-export const vaultIterations = (generated) =>
-  generated ? GENERATED_CODE_ITERATIONS : PASSWORD_ITERATIONS;
 /** @param {Record<string, string>} fields */
 const form = (fields) =>
   Object.entries(fields)
@@ -157,126 +117,6 @@ export function callback(attempt, input) {
   attempt.used = true;
   return params.get("code");
 }
-/** @param {Iterable<number>} bytes */
-const hex = (bytes) =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-/** @param {string} value */
-function fromHex(value) {
-  if (typeof value !== "string" || !/^(?:[a-f0-9]{2})+$/.test(value)) {
-    throw Error("Invalid vault.");
-  }
-  return Uint8Array.from(value.match(/../g), (b) => parseInt(b, 16));
-}
-/** @param {string} value */
-function utf8(value) {
-  const bytes = [];
-  for (const part of encodeURIComponent(value).match(/%[A-F0-9]{2}|./g) || []) {
-    bytes.push(
-      part.length === 3 ? parseInt(part.slice(1), 16) : part.charCodeAt(0),
-    );
-  }
-  return Uint8Array.from(bytes);
-}
-/** @param {string} password @param {Uint8Array} salt @param {number} iterations @param {DeriveKey} [derive] */
-function keyFor(password, salt, iterations, derive) {
-  const bytes = utf8(password);
-  if (derive && iterations === PASSWORD_ITERATIONS) {
-    return derive(bytes, salt).finally(() => bytes.fill(0));
-  }
-  const steps = pbkdf2(sha256, bytes, salt, {
-    c: iterations,
-    dkLen: KEY_BYTES,
-  });
-  for (let step = steps.next(); ; step = steps.next()) {
-    if (step.done) {
-      return step.value;
-    }
-  }
-}
-/** @param {string} password @param {string} token @param {number} [iterations] @param {DeriveKey} [derive] @returns {Promise<VaultContents>} */
-export async function seal(
-  password,
-  token,
-  iterations = PASSWORD_ITERATIONS,
-  derive,
-) {
-  const salt = Uint8Array.from(randomBytes(SALT_BYTES));
-  const iv = Uint8Array.from(randomBytes(IV_BYTES));
-  const key = await keyFor(password, salt, iterations, derive);
-  try {
-    return {
-      version: VAULT_VERSION,
-      salt: hex(salt),
-      iv: hex(iv),
-      data: hex(gcm(key, iv).encrypt(utf8(token))),
-    };
-  } finally {
-    key.fill(0);
-  }
-}
-/** @param {string} password @param {VaultContents} record @param {number} [iterations] @param {DeriveKey} [derive] */
-export async function unseal(
-  password,
-  record,
-  iterations = PASSWORD_ITERATIONS,
-  derive,
-) {
-  try {
-    /** @param {string} value */
-    const decode = (value) =>
-      record.version === VAULT_VERSION ? fromHex(value) : legacyBytes(value);
-    const key = await keyFor(password, decode(record.salt), iterations, derive);
-    try {
-      const bytes = gcm(key, decode(record.iv)).decrypt(decode(record.data));
-      return decodeURIComponent(
-        Array.from(bytes, (b) => "%" + b.toString(16).padStart(2, "0")).join(
-          "",
-        ),
-      );
-    } finally {
-      key.fill(0);
-    }
-  } catch {
-    throw Error("Incorrect password or damaged vault.");
-  }
-}
-/** @param {string} value */
-function legacyBytes(value) {
-  const alphabet =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const bytes = [];
-  let bits = 0;
-  let pending = 0;
-  for (const char of value.replace(/=+$/, "")) {
-    const digit = alphabet.indexOf(char);
-    if (digit < 0) {
-      throw Error("Invalid vault.");
-    }
-    pending = (pending << 6) | digit;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      bytes.push((pending >>> bits) & 255);
-    }
-  }
-  return Uint8Array.from(bytes);
-}
-export async function probe() {
-  try {
-    const sample = await seal("probe", "ok", 2);
-    if ((await unseal("probe", sample, 2)) !== "ok") {
-      return false;
-    }
-    try {
-      await unseal("wrong", sample, 2);
-      return false;
-    } catch {
-      return true;
-    }
-  } catch {
-    return false;
-  }
-}
 export class Session {
   /** @param {(value: string) => Promise<void>} storage @param {(url: string, options: ShellFetchOptions) => Promise<SpotifyResponse>} request */
   constructor(storage, request) {
@@ -284,8 +124,8 @@ export class Session {
     this.request = request;
     /** @type {string | null} */
     this.client = null;
-    /** @type {string | null} */
-    this.password = null;
+    /** @type {VaultState | null} */
+    this.vault = null;
     /** @type {string | null} */
     this.access = null;
     /** @type {string | null} */
@@ -294,8 +134,8 @@ export class Session {
     this.expires = 0;
     this.until = 0;
   }
-  /** @param {string} client @param {GrantFields} fields @param {string | null} password @param {OperationRuntime} [runtime] @param {boolean} [generated] */
-  async grant(client, fields, password, runtime, generated = false) {
+  /** @param {string} client @param {GrantFields} fields @param {string | null} password @param {OperationRuntime} [runtime] @param {boolean} [generated] @param {VaultState} [unlocked] */
+  async grant(client, fields, password, runtime, generated = false, unlocked) {
     const wait = runtime?.wait || withoutTimeout;
     runtime?.stage("Exchanging the code with Spotify…");
     let r;
@@ -330,47 +170,61 @@ export class Session {
     const refresh =
       data.refresh_token ||
       ("refresh_token" in fields ? fields.refresh_token : null);
-    if (password && refresh && (data.refresh_token || !this.refreshToken)) {
-      runtime?.stage("Securing your account…");
-      let vault;
-      try {
-        vault = await seal(
-          password,
-          refresh,
-          vaultIterations(generated),
-          runtime?.derive,
-        );
-      } catch {
-        throw Error(
-          "Herdr could not secure your account. Use an unlock code to save it quickly.",
-        );
+    const state = unlocked ?? (password && refresh ? new VaultState() : null);
+    try {
+      if (state && refresh && (data.refresh_token || !unlocked)) {
+        runtime?.stage("Securing your account…");
+        const vault = await seal(password, refresh, vaultIterations(generated), runtime, state);
+        runtime?.stage("Saving the vault…");
+        runtime?.commit();
+        try {
+          await this.storage(JSON.stringify({ client, ...vault, generated }));
+        } catch {
+          throw Error(
+            "Spotify accepted the authorization, but Herdr could not write the vault file.",
+          );
+        }
       }
-      runtime?.stage("Saving the vault…");
-      try {
-        await wait(() =>
-          this.storage(JSON.stringify({ client, ...vault, generated })),
-        );
-      } catch {
-        throw Error(
-          "Spotify accepted the authorization, but Herdr could not write the vault file.",
-        );
+      runtime?.check?.();
+    } catch (error) {
+      if (state !== this.vault) {
+        state?.close();
       }
+      throw error;
     }
+    if (this.vault !== state) {
+      this.vault?.close();
+    }
+    this.vault = state;
     this.client = client;
-    this.password = password;
     this.generated = generated;
     this.refreshToken = refresh;
     this.access = data.access_token;
     this.expires = Date.now() + data.expires_in * 1000;
   }
+  /** @param {PersistedVault} record @param {string} password @param {OperationRuntime} [runtime] */
+  async unlock(record, password, runtime) {
+    const state = new VaultState();
+    const generated = record.generated === true;
+    try {
+      const token = await unseal(password, record, vaultIterations(generated), runtime, state, { legacy: true });
+      await this.grant(record.client, { grant_type: "refresh_token", refresh_token: token }, null, runtime, generated, state);
+    } finally {
+      if (this.vault !== state) {
+        state.close();
+      }
+    }
+  }
+
   /** @param {OperationRuntime} [runtime] */
   async renew(runtime) {
     await this.grant(
       this.client,
       { grant_type: "refresh_token", refresh_token: this.refreshToken },
-      this.password,
+      null,
       runtime,
       this.generated,
+      this.vault,
     );
   }
   /** @param {string} [path] @param {string} [method] @param {{device_ids: string[], play: boolean}} [payload] @param {OperationRuntime} [runtime] @returns {Promise<unknown>} */
@@ -438,22 +292,25 @@ export class Session {
       throw Error("Unlock or connect your account first.");
     }
     runtime.stage("Securing your account with the new password…");
-    const vault = await seal(
-      password,
-      this.refreshToken,
-      PASSWORD_ITERATIONS,
-      runtime.derive,
-    );
-    await this.storage(
-      JSON.stringify({ client: this.client, ...vault, generated: false }),
-    );
-    this.password = password;
+    const state = new VaultState();
+    try {
+      const vault = await seal(password, this.refreshToken, vaultIterations(false), runtime, state);
+      runtime.commit();
+      await this.storage(JSON.stringify({ client: this.client, ...vault, generated: false }));
+    } catch (error) {
+      state.close();
+      throw error;
+    }
+    this.vault?.close();
+    this.vault = state;
     this.generated = false;
   }
   async logout() {
     await this.storage("");
     this.client = null;
-    this.password = null;
+    this.vault?.close();
+    this.vault = null;
+    this.generated = false;
     this.access = null;
     this.refreshToken = null;
     this.until = 0;

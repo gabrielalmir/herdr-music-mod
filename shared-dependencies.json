@@ -1,0 +1,12 @@
+{
+  "herdr-avlye-layout": {
+    "version": "v1.1.1",
+    "archive": "https://github.com/gabrielalmir/herdr-avlye-layout/releases/download/v1.1.1/herdr-avlye-layout-v1.1.1.zip",
+    "sha256": "e51e9cbfae9cc2783a0254d3d8e7bb20537085bcfc1f22f4a009941ffd9d15a0"
+  },
+  "herdr-vault": {
+    "version": "v1.0.0",
+    "archive": "https://github.com/gabrielalmir/herdr-vault/releases/download/v1.0.0/herdr-vault-v1.0.0.zip",
+    "sha256": "e6d6c3971b40238511630ccc8247d8f6af4756d6b8ecabb58c7a64e1166e59fa"
+  }
+}

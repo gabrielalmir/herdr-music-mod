@@ -1,18 +1,18 @@
 The manual OAuth callback uses PKCE S256, a random state value, and a single-use
 authorization attempt that expires after ten minutes. The access token stays in
-memory. The mod tests PBKDF2-SHA256 and AES-GCM before offering to save your
-account. Each vault write uses a fresh 16-byte salt and 12-byte IV. If
-cryptography is unavailable, the connection lasts for the current session.
-Disconnecting clears the local vault. Revoke authorization from your Spotify
-account.
+memory. The mod checks cryptography before offering to save your account.
+Disconnecting clears the local Music vault under `data/herdr-music-vault.json`.
+You can revoke authorization from your Spotify account.
 
-The v2 vault uses AES-GCM from @noble/ciphers 1.3.0 and PBKDF2-SHA256. For a
-user-entered password, the mod uses the Windows .NET implementation in a
-short-lived PowerShell process. The password and key travel over a single-use
-loopback connection that authenticates both ends. They stay out of process
-arguments and temporary files. The package includes the third-party license.
-Unlocking retrieves the refresh token to renew the session.
+Herdr Vault uses AES-GCM and PBKDF2-SHA256. A new password or code starts with
+a fresh 16-byte salt, and each write uses a fresh 12-byte IV. The unlocked
+key stays in memory while the session is active so a refresh-token rotation
+can reuse it. Older base64 vaults are read with the same password or code and
+are written as v2 at the next successful vault write.
 
-The unlock code option generates 192 random bits in Herdr and uses one PBKDF2
-iteration. User-entered passwords use 600,000 iterations. Save the generated
+User-entered passwords use 600,000 PBKDF2 iterations through Windows CNG in a
+short-lived PowerShell process. The worker authenticates both ends of a
+loopback connection before exchanging password and key material. Use **Cancel
+operation** to stop an unlock or password change before it writes. Generated
+unlock codes contain 192 random bits and use one PBKDF2 iteration. Save the
 code to unlock your account in a future session.

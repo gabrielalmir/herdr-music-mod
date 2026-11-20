@@ -10,5 +10,5 @@
     "strictNullChecks": false,
     "noEmit": true
   },
-  "files": ["gpui-kit.d.ts", "main.js", "spotify.js", "windows-kdf.js"]
+  "files": ["gpui-kit.d.ts", "main.js", "spotify.js"]
 }

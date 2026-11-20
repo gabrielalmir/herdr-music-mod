@@ -1,4 +1,9 @@
 *.zip
+*.zip.sha256
 gpui-kit.d.ts
 herdr.d.ts
 node_modules/
+
+# Downloaded build and development dependencies
+/vendor/herdr-avlye-layout/
+/mods/herdr-music/vendor/herdr-vault/

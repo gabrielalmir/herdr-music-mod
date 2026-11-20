@@ -1,16 +1,22 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   authorize,
   challenge,
   callback,
   redirect,
+  Session,
+} from "../mods/herdr-music/spotify.js";
+import {
   seal,
   unseal,
   probe,
   generateVaultCode,
   vaultIterations,
-  Session,
-} from "../mods/herdr-music/spotify.js";
+} from "../mods/herdr-music/vendor/herdr-vault/vault.js";
 assert.equal(
   challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
   "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
@@ -95,4 +101,86 @@ assert.equal(
   await unseal(code, fastVault, vaultIterations(fastVault.generated)),
   "r3",
 );
+
+const password = "$@!$".repeat(128);
+const oldVault = await seal(password, "legacy-refresh");
+const legacy = { client: "legacy-client" };
+for (const field of ["salt", "iv", "data"]) {
+  legacy[field] = Buffer.from(oldVault[field], "hex").toString("base64");
+}
+let requests = 0;
+let writes = 0;
+let savedMusic;
+const legacySession = new Session(
+  async value => {
+    writes++;
+    savedMusic = value;
+  },
+  async () => {
+    requests++;
+    return {
+      ok: true,
+      json: () => ({
+        access_token: "access",
+        ...(requests > 1 ? { refresh_token: "rotated-refresh" } : {}),
+        expires_in: 3600,
+      }),
+    };
+  },
+);
+await assert.rejects(legacySession.unlock(legacy, password + "$"));
+const damaged = { ...legacy, data: (legacy.data[0] === "A" ? "B" : "A") + legacy.data.slice(1) };
+await assert.rejects(legacySession.unlock(damaged, password));
+assert.equal(requests, 0);
+const cancelled = new Error("Cancelled");
+let stopped = false;
+const runtime = {
+  stage() {},
+  wait: action => action(),
+  check() {
+    if (stopped) {
+      throw cancelled;
+    }
+  },
+  derive: async () => {
+    stopped = true;
+    return new Uint8Array(32);
+  },
+  commit() {
+    this.check();
+  },
+};
+await assert.rejects(legacySession.unlock(legacy, password, runtime), cancelled);
+assert.equal(requests, 0);
+assert.equal(writes, 0);
+await legacySession.unlock(legacy, password);
+assert.equal(legacySession.refreshToken, "legacy-refresh");
+assert.equal(writes, 0);
+stopped = false;
+runtime.derive = async () => {
+  throw Error("Token rotation must reuse the unlocked key.");
+};
+await legacySession.renew(runtime);
+assert.equal(writes, 1);
+const upgraded = JSON.parse(savedMusic);
+assert.equal(upgraded.version, 2);
+assert.equal(upgraded.client, legacy.client);
+assert.equal(upgraded.salt, oldVault.salt);
+assert.equal(await unseal(password, upgraded), "rotated-refresh");
+const home = await mkdtemp(join(tmpdir(), "music-vault-"));
+try {
+  const clickup = join(home, "mods/clickup-panel");
+  await mkdir(clickup, { recursive: true });
+  const clickupPath = join(clickup, ".config.json");
+  const clickupVault = JSON.stringify(await seal("synthetic-code", "simulated ClickUp profile", 1));
+  await writeFile(clickupPath, clickupVault);
+  const musicPath = join(home, "herdr-music-vault.json");
+  await writeFile(musicPath, savedMusic);
+  legacySession.storage = value => writeFile(musicPath, value);
+  await legacySession.logout();
+  assert.equal(await readFile(musicPath, "utf8"), "");
+  assert.equal(await readFile(clickupPath, "utf8"), clickupVault);
+} finally {
+  await rm(home, { recursive: true, force: true });
+}
 console.log("Spotify tests passed");

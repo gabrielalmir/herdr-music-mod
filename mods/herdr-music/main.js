@@ -19,15 +19,12 @@ import {
   checking,
   nextCommand,
 } from "herdr";
-import { deriveOnWindows } from "./windows-kdf.js";
+import { deriveOnWindows } from "./vendor/herdr-vault/windows-kdf.js";
+import { generateVaultCode, probe } from "./vendor/herdr-vault/vault.js";
 import {
   authorize,
   callback,
   redirect,
-  probe,
-  unseal,
-  generateVaultCode,
-  vaultIterations,
   Session,
 } from "./spotify.js";
 
@@ -137,6 +134,8 @@ export default class Music extends View {
     this.generatedCode = null;
     /** @type {string | null} */
     this.stage = null;
+    /** @type {(() => void) | null} */
+    this.cancelOperation = null;
     this.message = "";
     /** @type {"seek" | "volume" | null} */
     this.drag = null;
@@ -192,6 +191,23 @@ export default class Music extends View {
     running = true;
     // The event context expires when its handler returns. Use the spawned context across awaits.
     cx.spawn(async (cx) => {
+      let cancelled = false;
+      /** @type {(error: Error) => void} */
+      let stop;
+      const stopped = new Promise((_, reject) => {
+        stop = reject;
+      });
+      stopped.catch(() => {});
+      const cancelError = Error("Operation cancelled.");
+      function check() {
+        if (cancelled) {
+          throw cancelError;
+        }
+      }
+      this.cancelOperation = () => {
+        cancelled = true;
+        stop(cancelError);
+      };
       /**
        * @template T
        * @param {() => Promise<T>} operation
@@ -201,8 +217,10 @@ export default class Music extends View {
         /** @type {import("gpui-kit").Task | undefined} */
         let timeout;
         try {
+          check();
           return await Promise.race([
             operation(),
+            stopped,
             new Promise((_, reject) => {
               timeout = cx.timer.after(OPERATION_TIMEOUT_MS, () => {
                 const error = new Error(
@@ -221,8 +239,17 @@ export default class Music extends View {
       /** @type {OperationRuntime} */
       const runtime = {
         wait,
+        check,
+        commit: () => {
+          check();
+          this.cancelOperation = null;
+          cx.notify();
+        },
         derive: (password, salt) =>
-          wait(() => deriveOnWindows(password, salt, cx)),
+          deriveOnWindows(password, salt, cx, appHome() + "/mods/herdr-music/vendor/herdr-vault/vault-kdf.ps1", {
+            check,
+            wait: (work) => wait(() => work),
+          }),
         stage: (message) => {
           this.stage = message;
           cx.notify();
@@ -236,6 +263,7 @@ export default class Music extends View {
         this.message = errorMessage(error);
       } finally {
         this.stage = null;
+        this.cancelOperation = null;
         running = false;
         cx.notify();
       }
@@ -410,19 +438,7 @@ export default class Music extends View {
       const password = this.password.value();
       this.password.set_value("");
       runtime.stage("Unlocking your account…");
-      const token = await unseal(
-        password,
-        vault,
-        vaultIterations(vault.generated),
-        runtime.derive,
-      );
-      await service.grant(
-        vault.client,
-        { grant_type: "refresh_token", refresh_token: token },
-        password,
-        runtime,
-        vault.generated,
-      );
+      await service.unlock(vault, password, runtime);
       this.settings = false;
       await this.refresh(runtime);
     });
@@ -462,7 +478,8 @@ export default class Music extends View {
 
   /** @param {Context} cx */
   disconnect(cx) {
-    this.task(cx, async () => {
+    this.task(cx, async (runtime) => {
+      runtime.commit();
       await service.logout();
       this.devices = [];
       this.track = null;
@@ -558,6 +575,9 @@ export default class Music extends View {
     );
     if (this.stage) {
       root.child(div().child(this.stage));
+      if (this.cancelOperation) {
+        root.child(this.button(t, "Cancel operation", () => this.cancelOperation?.()));
+      }
     }
     if (this.message) {
       root.child(div().child(this.message));

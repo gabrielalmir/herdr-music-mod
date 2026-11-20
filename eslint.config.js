@@ -3,7 +3,7 @@ import js from "@eslint/js";
 import stylistic from "@stylistic/eslint-plugin";
 
 export default defineConfig([
-  { ignores: ["**/vault-crypto.js"] },
+  { ignores: ["**/vendor/**"] },
   {
     files: ["mods/**/*.js", "tests/**/*.{js,mjs}"],
     extends: [js.configs.recommended],
